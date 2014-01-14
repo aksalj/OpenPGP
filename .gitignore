@@ -35,3 +35,9 @@ $RECYCLE.BIN/
 *.depend
 *.layout
 *.cbTemp
+
+#############
+## Xcode & Mac OS stuff
+#############
+.DS_Store
+*.xcodeproj
