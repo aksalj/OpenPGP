@@ -1,6 +1,6 @@
 #include "PGP.h"
 
-std::string PGP::format_string(std::string data, uint8_t line_length){
+std::string PGP::format_string(std::string data, uint8_t line_length) const{
     std::string out = "";
     for(unsigned int i = 0; i < data.size(); i += line_length){
         out += data.substr(i, line_length) + "\n";
@@ -8,33 +8,33 @@ std::string PGP::format_string(std::string data, uint8_t line_length){
     return out;
 }
 
-PGP::PGP(){
-    armored = true;
-}
+PGP::PGP():
+    armored(true),
+    ASCII_Armor(255), // default uint8_t(-1); use 255 to avoid compiler complaints
+    Armor_Header(),
+    packets()
+{}
 
-PGP::PGP(const PGP & pgp){
-    armored = pgp.armored;
-    ASCII_Armor = pgp.ASCII_Armor;
-    Armor_Header = pgp.Armor_Header;
-    for(Packet * const & p : pgp.packets){
-        packets.push_back(p -> clone());
-    }
-}
+PGP::PGP(const PGP & copy):
+    armored(copy.armored),
+    ASCII_Armor(copy.ASCII_Armor),
+    Armor_Header(copy.Armor_Header),
+    packets(copy.get_packets_clone())
+{}
 
-PGP::PGP(std::string & data){
-    armored = true;
+PGP::PGP(std::string & data):
+    PGP()
+{
     read(data);
 }
 
-PGP::PGP(std::ifstream & f){
-    armored = true;
+PGP::PGP(std::ifstream & f):
+    PGP()
+{
     read(f);
 }
 
 PGP::~PGP(){
-    for(Packet *& p : packets){
-        delete p;
-    }
     packets.clear();
 }
 
@@ -70,15 +70,21 @@ void PGP::read(std::string & data){
     }
 
     // no ASCII Armor header found
-    if (x == 7){
-        std::cerr << "Warning: Beginning of Armor Header Line not found. Will attempt to read raw file data." << std::endl;
+    if (x > 6){
+        //std::cerr << "Warning: Beginning of Armor Header Line not found. Will attempt to read raw file data." << std::endl;
         read_raw(ori);
         return;
     }
 
-    // Signed message
+    // Cleartext Signature Framework
     if (x == 6){
-        throw std::runtime_error("Error: Data contains message section. Use PGPMessage to parse this data.");
+        throw std::runtime_error("Error: Data contains message section. Use PGPCleartextSignature to parse this data.");
+    }
+
+    if (ASCII_Armor != 255){ // if an ASCII Armor header was set (by a child class)
+        if (ASCII_Armor != x){ // check if the parsed data is the same type
+            std::cerr << "Warning: ASCII Armor does not match data type." << std::endl;
+        }
     }
 
     ASCII_Armor = x;
@@ -90,7 +96,7 @@ void PGP::read(std::string & data){
     }
     if (x == data.size()){
         throw std::runtime_error("Error: End to Armor Header Line not found.");
-            }
+    }
 
     data = data.substr(x + 1, data.size() - x - 1);
 
@@ -128,7 +134,7 @@ void PGP::read(std::string & data){
         }
 
         if (!found){
-            std::cerr << "Warning: Unknown ASCII Armor Header Key \x22" << header << "\x22." << std::endl;
+            std::cerr << "Warning: Unknown ASCII Armor Header Key \"" << header << "\"." << std::endl;
         }
 
         x++;
@@ -179,66 +185,72 @@ void PGP::read(std::ifstream & file){
 }
 
 void PGP::read_raw(std::string & data){
+    uint8_t partial = 0;
     while (data.size()){
-        Packet * temp = read_packet(data);
-        packets.push_back(temp);
+        packets.push_back(read_packet(data, partial));
+    }
+
+    if (partial){ // last packet must have been a partial packet
+        (*(packets.rbegin())) -> set_partial(3); // set last partial packet to partial end
     }
     armored = false;
 }
 
-std::string PGP::show(){
+void PGP::read_raw(std::ifstream & file){
+    std::stringstream s;
+    s << file.rdbuf();
+    std::string data = s.str();
+    read_raw(data);
+}
+
+std::string PGP::show(const uint8_t indents, const uint8_t indent_size) const{
     std::stringstream out;
-    for(Packet *& p : packets){
-        out << (p -> get_format()?"New":"Old")  << ": ";
-        try{// defined packets have name and tag number
-            out << Packet_Tags.at(p -> get_tag()) << " (Tag " << (int) p -> get_tag() << ")";
-        }
-        catch (const std::out_of_range & e){}// catch out of range error for const std::map
-        out << "(" << p -> get_size() << " octets)\n" + p -> show() << "\n";
+    for(Packet::Ptr const & p : packets){
+        out << p -> show(indents, indent_size) << "\n";
     }
     return out.str();
 }
 
-std::string PGP::raw(uint8_t header){
+std::string PGP::raw(const uint8_t header) const{
     std::string out = "";
-    for(Packet *& p : packets){
+    for(Packet::Ptr const & p : packets){
         out += p -> write(header);
     }
     return out;
 }
 
-std::string PGP::write(uint8_t header){
-    std::string packet_string = raw(header);
-    if (!armored){
-        return packet_string;
+std::string PGP::write(const uint8_t armor, const uint8_t header) const{
+    std::string packet_string = raw(header);   // raw PGP data = binary, no ASCII headers
+    if ((armor == 1) || (!armor && !armored)){ // if no armor or if default, and not armored
+        return packet_string;                  // return raw data
     }
     std::string out = "-----BEGIN PGP " + ASCII_Armor_Header[ASCII_Armor] + "-----\n";
-    for(std::pair <std::string, std::string> & key : Armor_Header){
+    for(std::pair <std::string, std::string> const & key : Armor_Header){
         out += key.first + ": " + key.second + "\n";
     }
     out += "\n";
     return out + format_string(ascii2radix64(packet_string), MAX_LINE_LENGTH) + "=" + ascii2radix64(unhexlify(makehex(crc24(packet_string), 6))) +  "\n-----END PGP " + ASCII_Armor_Header[ASCII_Armor] + "-----\n";
 }
 
-bool PGP::get_armored(){
+bool PGP::get_armored() const{
     return armored;
 }
 
-uint8_t PGP::get_ASCII_Armor(){
+uint8_t PGP::get_ASCII_Armor() const{
     return ASCII_Armor;
 }
 
-std::vector <std::pair <std::string, std::string> > PGP::get_Armor_Header(){
+std::vector <std::pair <std::string, std::string> > PGP::get_Armor_Header() const{
     return Armor_Header;
 }
 
-std::vector <Packet *> PGP::get_packets(){
+std::vector <Packet::Ptr> PGP::get_packets() const{
     return packets;
 }
 
-std::vector <Packet *> PGP::get_packets_clone(){
-    std::vector <Packet *> out;
-    for(Packet *& p : packets){
+std::vector <Packet::Ptr> PGP::get_packets_clone() const{
+    std::vector <Packet::Ptr> out;
+    for(Packet::Ptr const & p : packets){
         out.push_back(p -> clone());
     }
     return out;
@@ -257,140 +269,17 @@ void PGP::set_Armor_Header(const std::vector <std::pair <std::string, std::strin
     Armor_Header = header;
 }
 
-void PGP::set_packets(const std::vector <Packet *> & p){
-    for(Packet *& t : packets){
-        delete t;
-    }
+void PGP::set_packets(const std::vector <Packet::Ptr> & p){
     packets.clear();
-    for(Packet * const & t : p){
+    for(Packet::Ptr const & t : p){
         packets.push_back(t -> clone());
     }
 }
 
-std::string PGP::keyid(){
-    if ((ASCII_Armor == 1) || (ASCII_Armor == 2)){
-        for(Packet *& p : packets){
-            // find primary key
-            if ((p -> get_tag() == 5) || (p -> get_tag() == 6)){
-                std::string data = p -> raw();
-                Tag6 tag6(data);
-                return tag6.get_keyid();
-            }
-        }
-        // if no primary key is found
-        for(Packet *& p : packets){
-            // find subkey
-            if ((p -> get_tag() == 7) || (p -> get_tag() == 14)){
-                std::string data = p -> raw();
-                Tag6 tag6(data);
-                return tag6.get_keyid();
-            }
-        }
-    }
-    else{
-        throw std::runtime_error("Error: PGP block type is incorrect.");
-    }
-    return ""; // should never reach here; mainly just to remove compiler warnings
-}
-
-// output is copied from gpg --list-keys
-std::string PGP::list_keys(){
-    if ((ASCII_Armor == 1) || (ASCII_Armor == 2)){
-        // scan for revoked keys
-        std::map <std::string, std::string> revoked;
-        for(Packet *& p : packets){
-            if (p -> get_tag() == 2){
-                std::string raw = p -> raw();
-                Tag2 tag2(raw);
-                if ((tag2.get_type() == 0x20) || (tag2.get_type() == 0x28)){
-                    bool found = false;
-                    for(Subpacket *& s : tag2.get_unhashed_subpackets()){
-                        if (s -> get_type() == 16){
-                            raw = s -> raw();
-                            Tag2Sub16 tag2sub16(raw);
-                            revoked[tag2sub16.get_keyid()] = show_date(tag2.get_time());
-                            found = true;
-                        }
-                    }
-                    if (!found){
-                        for(Subpacket *& s : tag2.get_hashed_subpackets()){
-                            if (s -> get_type() == 16){
-                                raw = s -> raw();
-                                Tag2Sub16 tag2sub16(raw);
-                                revoked[tag2sub16.get_keyid()] = show_date(tag2.get_time());
-                                found = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        std::stringstream out;
-        for(Packet *& p : packets){
-            std::string data = p -> raw();
-            switch (p -> get_tag()){
-                case 5: case 6: case 7: case 14:
-                    {
-                        Tag6 tag6(data);
-                        std::map <std::string, std::string>::iterator r = revoked.find(tag6.get_keyid());
-                        std::stringstream s;
-                        s << tag6.get_mpi()[0].get_str(2).size();
-                        out << Public_Key_Type.at(p -> get_tag()) << "    " << zfill(s.str(), 4, " ")
-                               << Public_Key_Algorithm_Short.at(tag6.get_pka()) << "/"
-                               << hexlify(tag6.get_keyid().substr(4, 4)) << " "
-                               << show_date(tag6.get_time())
-                               << ((r == revoked.end())?std::string(""):(std::string(" [revoked: ") + revoked[tag6.get_keyid()] + std::string("]")))
-                               << "\n";
-                    }
-                    break;
-                case 13:
-                    {
-                        Tag13 tag13(data);
-                        out << "uid                   " << tag13.raw() << "\n";
-                    }
-                    break;
-                case 17:
-                    {
-                        Tag17 tag17(data);
-                        std::vector <Subpacket *> subpackets = tag17.get_attributes();
-                        for(Subpacket * s : subpackets){
-                            // since only subpacket type 1 is defined
-                            data = s -> raw();
-                            Tag17Sub1 sub1(data);
-                            out << "att                   [jpeg image of size " << sub1.get_image().size() << "]\n";
-                        }
-                    }
-                    break;
-                case 2: default:
-                    break;
-            }
-        }
-        return out.str();
-    }
-    else{
-        throw std::runtime_error("Error: Not a PGP Key. Cannot Display.");
-    }
-}
-
-PGP * PGP::clone(){
-    PGP * out = new PGP;
-    out -> ASCII_Armor = ASCII_Armor;
-    out -> Armor_Header = Armor_Header;
-    out -> packets = get_packets_clone();
-    return out;
-}
-
-PGP PGP::operator=(const PGP & pgp){
-    ASCII_Armor = pgp.ASCII_Armor;
-    Armor_Header = pgp.Armor_Header;
-    for(Packet * const & p : pgp.packets){
-        packets.push_back(p -> clone());
-    }
+PGP & PGP::operator=(const PGP & copy){
+    armored = copy.armored;
+    ASCII_Armor = copy.ASCII_Armor;
+    Armor_Header = copy.Armor_Header;
+    packets = copy.get_packets_clone();
     return *this;
-}
-
-std::ostream & operator<<(std::ostream & stream, PGP & pgp){
-    stream << hexlify(pgp.keyid());
-    return stream;
 }

@@ -65,13 +65,19 @@ template <typename T> std::string makehex(T value, unsigned int size = 2 * sizeo
     return out;
 }
 
+template <typename T> uint8_t byte(const T & value, const uint16_t & n){
+    return (value >> (n * 8)) & 0xff;
+}
+
 std::string bintohex(const std::string & in, bool caps = false);
 std::string hexlify(const std::string & in, bool caps = false);
 std::string hexlify(const char in, bool caps = false);
 std::string unhexlify(const std::string & in);
 std::string pkcs5(const std::string & data, const unsigned int & blocksize);
 std::string remove_padding(std::string data);
-std::string zfill(std::string str, const unsigned int & n, const std::string & fill = "0");
+std::string zfill(const std::string & str, const unsigned int & n, const char fill = 0); // add to front of string
+std::string pad(const std::string & str, const unsigned int & n, const char fill = 0); // adds to back of string
+std::string xor_strings(const std::string & str1, const std::string & str2); // xor the contents of 2 strings, up to the last character of the shorter string
 
 // ////////////////////////////////////////////////////////////////////////////////
 // Thanks to Xeo @ stackoverflow

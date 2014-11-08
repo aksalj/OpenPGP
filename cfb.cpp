@@ -1,118 +1,164 @@
 #include "cfb.h"
 
-std::string xor_strings(const std::string & str1, const std::string & str2){
-    std::string out = "";
-    for(unsigned int x = 0; x < std::min(str1.size(), str2.size()); x++){
-        out += std::string(1, str1[x] ^ str2[x]);
-    }
-    return out;
-}
-
-SymAlg * use_sym_alg(const uint8_t sym_alg, const std::string & key, const std::string & key2, const std::string & key3){
-    SymAlg * alg = NULL;
+SymAlg::Ptr use_sym_alg(const uint8_t sym_alg, const std::string & key){
+    SymAlg::Ptr alg;
     switch(sym_alg){
         case 1:
-            alg = new IDEA(key);
+            alg = std::make_shared<IDEA>(key);
             break;
         case 2:
-            alg = new TDES(key, TDES_mode1, key2, TDES_mode2, key3, TDES_mode3);
+            alg = std::make_shared<TDES>(key.substr(0, 8), TDES_mode1, key.substr(8, 8), TDES_mode2, key.substr(16, 8), TDES_mode3);
             break;
         case 3:
-            alg = new CAST128(key);
+            alg = std::make_shared<CAST128>(key);
             break;
         case 4:
-            alg = new Blowfish(key);
+            alg = std::make_shared<Blowfish>(key);
             break;
         case 7: case 8: case 9:
-            alg = new AES(key);
+            alg = std::make_shared<AES>(key);
             break;
         case 10:
-            throw std::runtime_error("Error: Twofish has not yet been implemented yet.");
+            alg = std::make_shared<Twofish>(key);
+            break;
+        case 11: case 12: case 13:
+            alg = std::make_shared<Camellia>(key);
             break;
         default:
-            throw std::runtime_error("Error: Unknown symmetric key algorithm value.");
+            throw std::runtime_error("Error: Unknown Symmetric Key Algorithm value.");
             break;
     }
     return alg;
 }
 
-std::string OpenPGP_CFB_encrypt(SymAlg * crypt, const uint8_t packet, const std::string & data, std::string prefix){
+std::string OpenPGP_CFB_encrypt(SymAlg::Ptr & crypt, const uint8_t packet, const std::string & data, std::string prefix){
     const unsigned int BS = crypt -> blocksize() >> 3;
 
-    if (prefix.size() > BS){
-        prefix = prefix.substr(0, BS);
+	if (prefix.size() < BS){
+		throw std::runtime_error("Error: Given prefix too short.");
+	}
+	else if (prefix.size() > BS){
+        prefix = prefix.substr(0, BS);	// reduce prefix
     }
 
-    // 1
+	/*
+	13.9. OpenPGP CFB Mode
+
+		OpenPGP does symmetric encryption using a variant of Cipher Feedback
+		mode (CFB mode). This section describes the procedure it uses in
+		detail. This mode is what is used for Symmetrically Encrypted Data
+		Packets; the mechanism used for encrypting secret-key material is
+		similar, and is described in the sections above.
+		In the description below, the value BS is the block size in octets of
+		the cipher. Most ciphers have a block size of 8 octets. The AES and
+		Twofish have a block size of 16 octets. Also note that the
+		description below assumes that the IV and CFB arrays start with an
+		index of 1 (unlike the C language, which assumes arrays start with a
+		zero index).
+		OpenPGP CFB mode uses an initialization vector (IV) of all zeros, and
+		prefixes the plaintext with BS+2 octets of random data, such that
+		octets BS+1 and BS+2 match octets BS-1 and BS. It does a CFB
+		resynchronization after encrypting those BS+2 octets.
+		Thus, for an algorithm that has a block size of 8 octets (64 bits),
+		the IV is 10 octets long and ocets 7 and 8 of the IV are the same as
+		octets 9 and 10. For an algorithm with a block size of 16 octets
+		(128 bits), the IV is 18 octets long, and octets 17 and 18 replicate
+		octets 15 and 16. Those extra two octets are an easy check for a
+		correct key.
+
+	Step by step, here is the procedure:
+	*/
+
+    // 1. The feedback register (FR) is set to the IV, which is all zeros.
     std::string FR(BS, 0);
-    // 2
+
+    // 2. FR is encrypted to produce FRE (FR Encrypted). This is the encryption of an all-zero value.
     std::string FRE = crypt -> encrypt(FR);
-    // 3
+
+    // 3. FRE is xored with the first BS octets of random data prefixed to the plaintext to produce C[1] through C[BS], the first BS octets of ciphertext.
     FRE = xor_strings(FRE, prefix);
     std::string C = FRE;
-    // 4
+
+    // 4. FR is loaded with C[1] through C[BS].
     FR = C;
-    // 5
+
+    // 5. FR is encrypted to produce FRE, the encryption of the first BS octets of ciphertext.
     FRE = crypt -> encrypt(FR);
-    // 6
+
+    // 6. The left two octets of FRE get xored with the next two octets of data that were prefixed to the plaintext. This produces C[BS+1] and C[BS+2], the next two octets of ciphertext.
     C += xor_strings(FRE.substr(0, 2), prefix.substr(BS - 2, 2));
-    // 7
-    if (packet == 9){ // resynchronization
+
+	if (packet == 9){ // resynchronization
+		// 7. (The resynchronization step) FR is loaded with C[3] through C[BS+2].
         FR = C.substr(2, BS);
-        // 8
+
+		// 8. FR is encrypted to produce FRE.
         FRE = crypt -> encrypt(FR);
-        // 9
+
+		// 9. FRE is xored with the first BS octets of the given plaintext, now that we have finished encrypting the BS+2 octets of prefixed data. This produces C[BS+3] through C[BS+(BS+2)], the next BS octets of ciphertext.
         C += xor_strings(FRE, data.substr(0, BS));
+
         unsigned int x = BS;
         while (x < data.size()){
-            // 10
+            // 10. FR is loaded with C[BS+3] to C[BS + (BS+2)] (which is C11-C18 for an 8-octet block).
             FR = C.substr(x + 2, BS);
-            // 11
+
+			// 11. FR is encrypted to produce FRE.
             FRE = crypt -> encrypt(FR);
-            // 12
+
+			// 12. FRE is xored with the next BS octets of plaintext, to produce the next BS octets of ciphertext. These are loaded into FR, and the process is repeated until the plaintext is used up.
             C += xor_strings(FRE, data.substr(x, BS));
+
             x += BS;
         }
     }
     else{ // no resynchronization
+		/*
+		5.13. Sym. Encrypted Integrity Protected Data Packet (Tag 18)
+
+			Unlike the Symmetrically Encrypted Data Packet, no
+			special CFB resynchronization is done after encrypting this prefix
+			data.
+		*/
+
         // 8
-        FRE = crypt -> encrypt(FR);
+        // FRE = crypt -> encrypt(FR); // not needed
+
         // 9
         C += xor_strings(FRE.substr(2, BS - 2), data.substr(0, BS));
         C = C.substr(0, BS << 1);
+
         unsigned int x = BS;
         while (x < data.size()){
             // 10
             FR = C.substr(x, BS);
+
             // 11
             FRE = crypt -> encrypt(FR);
+
             // 12
             C += xor_strings(FRE, data.substr(x - 2, BS));
+
             x += BS;
         }
     }
     return C;
 }
 
-std::string OpenPGP_CFB_decrypt(SymAlg * crypt, const uint8_t packet, const std::string & data){
+std::string OpenPGP_CFB_decrypt(SymAlg::Ptr & crypt, const uint8_t packet, const std::string & data){
     const unsigned int BS = crypt -> blocksize() >> 3;
 
     // 1
     std::string FR(BS, 0);
-
     // 2
     std::string FRE = crypt -> encrypt(FR);
-
     // 4
     FR = data.substr(0, BS);
-
     // 3
     std::string prefix = xor_strings(FRE, FR);
-
     // 5
     FRE = crypt -> encrypt(FR); // encryption of ciphertext
     std::string check = xor_strings(FRE.substr(0, 2), data.substr(BS, 2));
-
     // 6
     if (prefix.substr(BS - 2, 2) != check){
         throw std::runtime_error("Error: Bad OpenPGP_CFB check value.");
@@ -120,35 +166,34 @@ std::string OpenPGP_CFB_decrypt(SymAlg * crypt, const uint8_t packet, const std:
     std::string P = "";
     unsigned int x = (packet == 9)?2:0; // 7
     while ((x + BS) < data.size()){
-        P += xor_strings(FRE, data.substr(x, BS));
-        FRE = crypt -> encrypt(data.substr(x, BS));
+        std::string substr = data.substr(x, BS);
+        P += xor_strings(FRE, substr);
+        FRE = crypt -> encrypt(substr);
         x += BS;
     }
     P += xor_strings(FRE, data.substr(x, BS));
     return prefix + prefix.substr(BS - 2, 2) + P.substr(BS + 2, P.size() - BS - 2);
 }
 
-std::string use_OpenPGP_CFB_encrypt(const uint8_t sym_alg, const uint8_t packet, const std::string & data, const std::string & key, const std::string & prefix, const std::string & key2, const std::string & key3){
+std::string use_OpenPGP_CFB_encrypt(const uint8_t sym_alg, const uint8_t packet, const std::string & data, const std::string & key, const std::string & prefix){
     if (!sym_alg){
         return data;
     }
-    SymAlg * alg = use_sym_alg(sym_alg, key, key2, key3);
+    SymAlg::Ptr alg = use_sym_alg(sym_alg, key);
     std::string out = OpenPGP_CFB_encrypt(alg, packet, data, prefix);
-    delete alg;
     return out;
 }
 
-std::string use_OpenPGP_CFB_decrypt(const uint8_t sym_alg, const uint8_t packet, const std::string & data, const std::string & key, const std::string & key2, const std::string & key3){
+std::string use_OpenPGP_CFB_decrypt(const uint8_t sym_alg, const uint8_t packet, const std::string & data, const std::string & key){
     if (!sym_alg){
         return data;
     }
-    SymAlg * alg = use_sym_alg(sym_alg, key, key2, key3);
+    SymAlg::Ptr alg = use_sym_alg(sym_alg, key);
     std::string out = OpenPGP_CFB_decrypt(alg, packet, data);
-    delete alg;
     return out;
 }
 
-std::string normal_CFB_encrypt(SymAlg * crypt, std::string & data, std::string & IV){
+std::string normal_CFB_encrypt(SymAlg::Ptr & crypt, std::string & data, std::string & IV){
     std::string out = "";
     const unsigned int BS = crypt -> blocksize() >> 3;
     unsigned int x = 0;
@@ -160,7 +205,7 @@ std::string normal_CFB_encrypt(SymAlg * crypt, std::string & data, std::string &
     return out;
 }
 
-std::string normal_CFB_decrypt(SymAlg * crypt, std::string & data, std::string & IV){
+std::string normal_CFB_decrypt(SymAlg::Ptr & crypt, std::string & data, std::string & IV){
     std::string out = "";
     const unsigned int BS = crypt -> blocksize() >> 3;
     unsigned int x = 0;
@@ -172,22 +217,20 @@ std::string normal_CFB_decrypt(SymAlg * crypt, std::string & data, std::string &
     return out;
 }
 
-std::string use_normal_CFB_encrypt(const uint8_t sym_alg, std::string data, std::string key, std::string IV, std::string key2, std::string key3){
+std::string use_normal_CFB_encrypt(const uint8_t sym_alg, std::string data, std::string key, std::string IV){
     if (!sym_alg){
         return data;
     }
-    SymAlg * alg = use_sym_alg(sym_alg, key, key2, key3);
+    SymAlg::Ptr alg = use_sym_alg(sym_alg, key);
     std::string out = normal_CFB_encrypt(alg, data, IV);
-    delete alg;
     return out;
 }
 
-std::string use_normal_CFB_decrypt(const uint8_t sym_alg, std::string data, std::string key, std::string IV, std::string key2, std::string key3){
+std::string use_normal_CFB_decrypt(const uint8_t sym_alg, std::string data, std::string key, std::string IV){
     if (!sym_alg){
         return data;
     }
-    SymAlg * alg = use_sym_alg(sym_alg, key, key2, key3);
+    SymAlg::Ptr alg = use_sym_alg(sym_alg, key);
     std::string out = normal_CFB_decrypt(alg, data, IV);
-    delete alg;
     return out;
 }

@@ -2,7 +2,7 @@
 PKCS1.h
 PKCS#1 as decrypted in RFC 4880 sec 13.1
 
-Copyright (c) 2013 Jason Lee
+Copyright (c) 2013, 2014 Jason Lee
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29,11 +29,10 @@ THE SOFTWARE.
 #include <iostream>
 #include <stdexcept>
 
-#include <gmpxx.h>
-
 #include "common/includes.h"
 #include "RNG/RNG.h"
 #include "consts.h"
+#include "mpi.h"
 #include "pgptime.h"
 
 // RFC 4880 13.1.1
@@ -43,5 +42,5 @@ std::string EME_PKCS1v1_5_ENCODE(const std::string & m, const unsigned int & k);
 std::string EME_PKCS1v1_5_DECODE(const std::string & m);
 
 // RFC 4880 13.1.3
-std::string EMSA_PKCS1_v1_5(const uint8_t & h, std::string & hashed_data, const unsigned int & keylength);
+std::string EMSA_PKCS1_v1_5(const uint8_t & h, const std::string & hashed_data, const unsigned int & keylength);
 #endif

@@ -2,7 +2,7 @@
 encrypt.h
 Function to encrypt data with a PGP public key
 
-Copyright (c) 2013 Jason Lee
+Copyright (c) 2013, 2014 Jason Lee
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,19 +31,28 @@ THE SOFTWARE.
 #include <stdexcept>
 #include <vector>
 
-#include <gmpxx.h>
-
+#include "Compress/Compress.h"
 #include "Hashes/Hashes.h"
 #include "PKA/PKA.h"
 #include "cfb.h"
-#include "PGP.h"
+#include "mpi.h"
+#include "PGPKey.h"
+#include "PGPMessage.h"
 #include "PKCS1.h"
 #include "revoke.h"
 
-Tag6 * find_encrypting_key(PGP & k);
-std::vector <mpz_class> pka_encrypt(const uint8_t pka, mpz_class data, const std::vector <mpz_class> & pub);
-std::vector <mpz_class> pka_encrypt(const uint8_t pka, const std::string & data, const std::vector <mpz_class> & pub);
+Tag6::Ptr find_encrypting_key(const PGP & k);
+std::vector <PGPMPI> pka_encrypt(const uint8_t pka, PGPMPI data, const std::vector <PGPMPI> & pub);
+std::vector <PGPMPI> pka_encrypt(const uint8_t pka, const std::string & data, const std::vector <PGPMPI> & pub);
+
+Packet::Ptr encrypt_data(const std::string & session_key, const std::string & data, const std::string & filename = "", const uint8_t sym_alg = 9, const uint8_t comp = 1, const bool mdc = true, const PGPSecretKey::Ptr & signer = nullptr, const std::string & sig_passphrase = "");
 
 // Encrypt data
-PGP encrypt(const std::string & data, PGP & pub, bool hash = true, uint8_t sym_alg = 9);
+// Default:
+//      Symmetric Key Algorithm: AES256
+//      Compression Algorithm: ZLIB
+//      Use Modification Detection Packet: true
+//
+PGPMessage encrypt_pka(const PGPPublicKey & pub, const std::string & data, const std::string & filename = "", const uint8_t sym_alg = 9, const uint8_t comp = 2, const bool mdc = true, const PGPSecretKey::Ptr & signer = nullptr, const std::string & sig_passphrase = "");
+PGPMessage encrypt_sym(const std::string & passphrase, const std::string & data, const std::string & filename = "", const uint8_t sym_alg = 9, const uint8_t comp = 2, const bool mdc = true, const PGPSecretKey::Ptr & signer = nullptr, const std::string & sig_passphrase = "");
 #endif

@@ -1,8 +1,16 @@
-#include "./MD5.h"
+#include "MD5.h"
 
-void MD5::run(const std::string & data, uint32_t & H0, uint32_t & H1, uint32_t & H2, uint32_t & H3){
+std::string MD5::to_little_end(const std::string & data) const{
+    std::string result;
+    for(unsigned int x = 0; x < (data.size() >> 2); x++){
+        result += little_end(data.substr(x << 2, 4), 256);
+    }
+    return result;
+}
+
+void MD5::calc(const std::string & data, context & state) const{
     for(unsigned int i = 0; i < (data.size() >> 6); i++){
-        uint32_t a = h0, b = h1, c = h2, d = h3;
+        uint32_t a = state.h0, b = state.h1, c = state.h2, d = state.h3;
         uint32_t w[16];
         for(uint8_t x = 0; x < 16; x++){
             w[x] = toint(data.substr(i << 6, 64).substr(x << 2, 4), 256);
@@ -31,55 +39,50 @@ void MD5::run(const std::string & data, uint32_t & H0, uint32_t & H1, uint32_t &
             b += ROL(a + f + MD5_K[x] + w[g], MD5_R[x], 32);
             a = t;
         }
-        H0 += a;
-        H1 += b;
-        H2 += c;
-        H3 += d;
+        state.h0 += a;
+        state.h1 += b;
+        state.h2 += c;
+        state.h3 += d;
     }
 }
 
-MD5::MD5(const std::string & data){
-    h0 = 0x67452301;
-    h1 = 0xefcdab89;
-    h2 = 0x98badcfe;
-    h3 = 0x10325476;
+MD5::MD5() :
+    Hash(),
+    ctx(0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476)
+{}
 
-    update(data);
+MD5::MD5(const std::string & str) :
+    MD5()
+{
+    update(str);
 }
 
-void MD5::update(const std::string & data){
-    bytes += data.size();
-    buffer += data;
-
-    std::string temp = "";
-    for(unsigned int i = 0; i < ((bytes >> 6) << 6); i += 4){
-        temp += little_end(buffer.substr(i, 4), 256);
+void MD5::update(const std::string & str){
+    std::string data = stack + str;
+    stack.clear();
+    std::string::size_type size = ((data.size() >> 6) << 6);
+    if ( std::string::size_type rem = ( data.size() - size ) ){
+        stack = data.substr(size, rem);
     }
-    run(temp, h0, h1, h2, h3);
-    buffer = buffer.substr(buffer.size() - (buffer.size() & 63), 64);
+    calc(to_little_end(data.substr(0, size)), ctx);
+    clen += size;
 }
 
 std::string MD5::hexdigest(){
-    uint32_t out0 = h0, out1 = h1, out2 = h2, out3 = h3;
-    std::string data = buffer + "\x80" + std::string((((bytes & 63) > 55)?119:55) - (bytes & 63), 0);
-
-    std::string temp = "";
-    for(unsigned int i = 0; i < data.size(); i += 4){
-        temp += little_end(data.substr(i, 4), 256);
-    }
-
-    std::string len = unhexlify(makehex(bytes << 3, 16));
-    temp += len.substr(4, 4) + len.substr(0, 4);
-
-    run(temp, out0, out1, out2, out3);
-
-    return little_end(makehex(out0, 8), 16) + little_end(makehex(out1, 8), 16) + little_end(makehex(out2, 8), 16) + little_end(makehex(out3, 8), 16);
+    context tmp = ctx;
+    uint16_t size = stack.size();
+    std::string last = stack + "\x80" + std::string((((size & 63) > 55)?119:55) - (size & 63), 0);
+    last = to_little_end(last);
+    std::string temp = unhexlify(makehex((clen+size) << 3, 16));
+    last += temp.substr(4, 4) + temp.substr(0, 4);
+    calc(last, tmp);
+    return little_end(makehex(tmp.h0, 8)) + little_end(makehex(tmp.h1, 8)) + little_end(makehex(tmp.h2, 8)) + little_end(makehex(tmp.h3, 8));
 }
 
-unsigned int MD5::blocksize(){
+unsigned int MD5::blocksize() const{
     return 512;
 }
 
-unsigned int MD5::digestsize(){
+unsigned int MD5::digestsize() const{
     return 128;
 }

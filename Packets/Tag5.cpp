@@ -1,52 +1,48 @@
 #include "Tag5.h"
-Tag5::Tag5(){
-    tag = 5;
-    s2k_con = 0;
-    sym = 0;
-    s2k = NULL;
-}
 
-Tag5::Tag5(const Tag5 & tag5){
-    tag = tag5.tag;
-    version = tag5.version;
-    format = tag5.format;
-    size = tag5.size;
-    time = tag5.time;
-    pka = tag5.pka;
-    mpi = tag5.mpi;
-    expire = tag5.expire;
-    s2k_con = tag5.s2k_con;
-    sym = tag5.sym;
-    s2k = tag5.s2k -> clone();
-    IV = tag5.IV;
-    secret = tag5.secret;
-}
+Tag5::Tag5(uint8_t tag):
+    Tag6(tag),
+    s2k_con(0),
+    sym(0),
+    s2k(),
+    IV(),
+    secret()
+{}
 
-Tag5::Tag5(std::string & data){
-    tag = 5;
-    s2k_con = 0;
-    sym = 0;
-    s2k = NULL;
+Tag5::Tag5():
+    Tag5(5)
+{}
+
+Tag5::Tag5(const Tag5 & copy):
+    Tag6(copy),
+    s2k_con(copy.s2k_con),
+    sym(copy.sym),
+    s2k(copy.s2k),
+    IV(copy.IV),
+    secret(copy.secret)
+{}
+
+Tag5::Tag5(std::string & data):
+    Tag5(5)
+{
     read(data);
 }
 
-Tag5::~Tag5(){
-    delete s2k;
-}
+Tag5::~Tag5(){}
 
 void Tag5::read_s2k(std::string & data){
-    delete s2k;
+    s2k.reset();
     uint8_t length = 0;
     if (data[0] == 0){
-        s2k = new S2K0;
+        s2k = std::make_shared<S2K0>();
         length = 2;
     }
     else if (data[0] == 1){
-        s2k = new S2K1;
+        s2k = std::make_shared<S2K1>();
         length = 10;
     }
     else if (data[0] == 3){
-        s2k = new S2K3;
+        s2k = std::make_shared<S2K3>();
         length = 11;
     }
     std::string s2k_str = data.substr(0, length);
@@ -54,42 +50,43 @@ void Tag5::read_s2k(std::string & data){
     s2k -> read(s2k_str);
 }
 
-std::string Tag5::show_common(){
+std::string Tag5::show_private(const uint8_t indents, const uint8_t indent_size) const{
+    unsigned int tab = indents * indent_size;
     std::stringstream out;
     if (s2k_con > 253){
-        out << "    String-to-Key Usage Conventions: " << (int) s2k_con << "\n"
-            << "    Symmetric Key Algorithm: " << Symmetric_Algorithms.at(sym) << " (sym " << (unsigned int) sym << ")\n"
-            << "    " << String2Key_Specifiers.at(s2k -> get_type()) << " (s2k " << (int) s2k -> get_type() << "):\n" << s2k -> show();
+        out << std::string(tab, ' ') << "    String-to-Key Usage Conventions: " << static_cast <unsigned int> (s2k_con) << "\n"
+            << std::string(tab, ' ') << "    Symmetric Key Algorithm: " << Symmetric_Algorithms.at(sym) << " (sym " << static_cast <unsigned int> (sym) << ")\n"
+            << std::string(tab, ' ') << s2k -> show(indents);
         if (s2k -> get_type()){
-            out << "    IV: " << hexlify(IV) << "\n";
+            out << std::string(tab, ' ') << "    IV: " << hexlify(IV);
         }
     }
 
-    out << "    Encrypted Data (" << secret.size() << " octets):\n        ";
+    out << "\n" << std::string(tab, ' ') << "    Encrypted Data (" << secret.size() << " octets):\n        ";
     if (pka < 4){
-        out << "RSA d, p, q, u";
+        out << std::string(tab, ' ') << "RSA d, p, q, u";
     }
     else if (pka == 16){
-        out << "Elgamal x";
+        out << std::string(tab, ' ') << "Elgamal x";
     }
     else if (pka == 17){
-        out << "DSA x";
+        out << std::string(tab, ' ') << "DSA x";
     }
-    out << " + ";
+    out << std::string(tab, ' ') << " + ";
 
     if (s2k_con == 254){
-        out << "SHA1 hash\n";
+        out << std::string(tab, ' ') << "SHA1 hash\n";
     }
     else{
-        out << "2 Octet Checksum\n";
+        out << std::string(tab, ' ') << "2 Octet Checksum\n";
     }
-    out << "        " << hexlify(secret);
+    out << std::string(tab, ' ') << "        " << hexlify(secret);
     return out.str();
 }
 
-void Tag5::read(std::string & data){
+void Tag5::read(std::string & data, const uint8_t part){
     size = data.size();
-    read_tag6(data);
+    read_common(data); // read public stuff
     s2k_con = data[0];
     data = data.substr(1, data.size() - 1);
     if (s2k_con > 253){
@@ -104,12 +101,13 @@ void Tag5::read(std::string & data){
     secret = data;
 }
 
-std::string Tag5::show(){
-    return show_tag6() + show_common();
+std::string Tag5::show(const uint8_t indents, const uint8_t indent_size) const{
+    unsigned int tab = indents * indent_size;
+    return std::string(tab, ' ') + show_title() + "\n" + show_common(indents, indent_size) + show_private(indents, indent_size);
 }
 
-std::string Tag5::raw(){
-    std::string out = raw_tag6() + std::string(1, s2k_con);
+std::string Tag5::raw() const{
+    std::string out = raw_common() + std::string(1, s2k_con);
     if (s2k_con > 253){
         if (!s2k){
             throw std::runtime_error("Error: S2K has not been set.");
@@ -122,45 +120,45 @@ std::string Tag5::raw(){
     return out + secret;
 }
 
-uint8_t Tag5::get_s2k_con(){
+uint8_t Tag5::get_s2k_con() const{
     return s2k_con;
 }
 
-uint8_t Tag5::get_sym(){
+uint8_t Tag5::get_sym() const{
     return sym;
 }
 
-S2K * Tag5::get_s2k(){
+S2K::Ptr Tag5::get_s2k() const{
     return s2k;
 }
 
-S2K * Tag5::get_s2k_clone(){
+S2K::Ptr Tag5::get_s2k_clone() const{
     return s2k -> clone();
 }
 
-std::string Tag5::get_IV(){
+std::string Tag5::get_IV() const{
     return IV;
 }
 
-std::string Tag5::get_secret(){
+std::string Tag5::get_secret() const{
     return secret;
 }
 
-Tag6 Tag5::get_public_obj(){
+Tag6 Tag5::get_public_obj() const{
     std::string data = raw();
     Tag6 out(data);
     return out;
 }
 
-Tag6 * Tag5::get_public_ptr(){
+Tag6::Ptr Tag5::get_public_ptr() const{
     std::string data = raw();
-    Tag6 * out = new Tag6(data);
+    Tag6::Ptr out(new Tag6(data));
     return out;
 }
 
 void Tag5::set_s2k_con(const uint8_t c){
     s2k_con = c;
-    size = raw_tag6().size() + 1;
+    size = raw_common().size() + 1;
     if (s2k){
         size += s2k -> write().size();
     }
@@ -172,7 +170,7 @@ void Tag5::set_s2k_con(const uint8_t c){
 
 void Tag5::set_sym(const uint8_t s){
     sym = s;
-    size = raw_tag6().size() + 1;
+    size = raw_common().size() + 1;
     if (s2k){
         size += s2k -> write().size();
     }
@@ -182,19 +180,18 @@ void Tag5::set_sym(const uint8_t s){
     size += secret.size();
 }
 
-void Tag5::set_s2k(S2K * s){
-    delete s2k;
+void Tag5::set_s2k(const S2K::Ptr & s){
     if (s -> get_type() == 0){
-        s2k = new S2K0;
+        s2k = std::make_shared<S2K0>();
     }
     else if (s -> get_type() == 1){
-        s2k = new S2K1;
+        s2k = std::make_shared<S2K1>();
     }
     else if (s -> get_type() == 3){
-        s2k = new S2K3;
+        s2k = std::make_shared<S2K3>();
     }
     s2k = s -> clone();
-    size = raw_tag6().size() + 1;
+    size = raw_common().size() + 1;
     if (s2k){
         size += s2k -> write().size();
     }
@@ -206,7 +203,7 @@ void Tag5::set_s2k(S2K * s){
 
 void Tag5::set_IV(const std::string & iv){
     IV = iv;
-    size = raw_tag6().size() + 1;
+    size = raw_common().size() + 1;
     if (s2k){
         size += s2k -> write().size();
     }
@@ -218,7 +215,7 @@ void Tag5::set_IV(const std::string & iv){
 
 void Tag5::set_secret(const std::string & s){
     secret = s;
-    size = raw_tag6().size() + 1;
+    size = raw_common().size() + 1;
     if (s2k){
         size += s2k -> write().size();
     }
@@ -228,25 +225,18 @@ void Tag5::set_secret(const std::string & s){
     size += secret.size();
 }
 
-Tag5 * Tag5::clone(){
-    Tag5 * out = new Tag5(*this);
+Packet::Ptr Tag5::clone() const{
+    Ptr out = std::make_shared <Tag5> (*this);
     out -> s2k = s2k -> clone();
     return out;
 }
 
-Tag5 Tag5::operator=(const Tag5 & tag5){
-    tag = tag5.tag;
-    version = tag5.version;
-    format = tag5.format;
-    size = tag5.size;
-    time = tag5.time;
-    pka = tag5.pka;
-    mpi = tag5.mpi;
-    expire = tag5.expire;
-    s2k_con = tag5.s2k_con;
-    sym = tag5.sym;
-    s2k = tag5.s2k -> clone();
-    IV = tag5.IV;
-    secret = tag5.secret;
+Tag5 & Tag5::operator =(const Tag5 & copy){
+    Key::operator =(copy);
+    s2k_con = copy.s2k_con;
+    sym = copy.sym;
+    s2k = copy.s2k -> clone();
+    IV = copy.IV;
+    secret = copy.secret;
     return *this;
 }

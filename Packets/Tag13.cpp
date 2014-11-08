@@ -1,14 +1,19 @@
 #include "Tag13.h"
-Tag13::Tag13(){
-    tag = 13;
-}
 
-Tag13::Tag13(std::string & data){
-    tag = 13;
+Tag13::Tag13():
+    ID(13),
+    name(),
+    comment(),
+    email()
+{}
+
+Tag13::Tag13(std::string & data):
+    Tag13()
+{
     read(data);
 }
 
-void Tag13::read(std::string & data){
+void Tag13::read(std::string & data, const uint8_t part){
     size = data.size();
     if (!data.size()){
         // no data
@@ -55,20 +60,20 @@ void Tag13::read(std::string & data){
     }
 }
 
-std::string Tag13::show(){
+std::string Tag13::show(const uint8_t indents, const uint8_t indent_size) const{
+    unsigned int tab = indents * indent_size;
     std::stringstream out;
-    out << "    User ID: " << name;
+    out << std::string(tab, ' ') << show_title() << "\n" << std::string(tab, ' ') << "    User ID: " << name;
     if (comment != ""){
-        out << " (" << comment << ")";
+        out << std::string(tab, ' ') << " (" << comment << ")";
     }
     if (email != ""){
-        out << " <" << email << ">";
+        out << std::string(tab, ' ') << " <" << email << ">";
     }
-    out << "\n";
     return out.str();
 }
 
-std::string Tag13::raw(){
+std::string Tag13::raw() const{
     std::string out = "";
     if (name != ""){
         out += name + "";
@@ -82,15 +87,15 @@ std::string Tag13::raw(){
     return out;
 }
 
-std::string Tag13::get_name(){
+std::string Tag13::get_name() const{
     return name;
 }
 
-std::string Tag13::get_comment(){
+std::string Tag13::get_comment() const{
     return comment;
 }
 
-std::string Tag13::get_email(){
+std::string Tag13::get_email() const{
     return email;
 }
 
@@ -109,6 +114,6 @@ void Tag13::set_email(const std::string & e){
     size = raw().size();
 }
 
-Tag13 * Tag13::clone(){
-    return new Tag13(*this);
+Packet::Ptr Tag13::clone() const{
+    return std::make_shared <Tag13> (*this);
 }

@@ -6,7 +6,7 @@ uint64_t toint(const std::string & s, const int & base){
     switch (base){
         case 2:
             for(const unsigned char & c : s){
-                value = (value << 1) + ((uint8_t) c - '\x30');
+                value = (value << 1) + (static_cast <uint8_t> (c) - '\x30');
             }
             break;
         case 8:
@@ -20,7 +20,7 @@ uint64_t toint(const std::string & s, const int & base){
             break;
         case 256:
             for(const unsigned char & c : s){
-                value = (value << 8) + (uint8_t) c;
+                value = (value << 8) + static_cast <uint8_t> (c);
             }
             break;
         default:
@@ -58,13 +58,13 @@ std::string hexlify(const std::string & in, bool caps){
     // hexadecimal representation of the orignal chars
     std::string out = "";
     for(unsigned int x = 0; x < in.size(); x++){
-        out += makehex((unsigned char) in[x], 2, caps);
+        out += makehex(static_cast <unsigned char> (in[x]), 2, caps);
     }
     return out;
 }
 
 std::string hexlify(const char in, bool caps){
-    return makehex((uint8_t) in, 2, caps);
+    return makehex(static_cast <uint8_t> (in), 2, caps);
 }
 
 std::string unhexlify(const std::string & in){
@@ -75,25 +75,25 @@ std::string unhexlify(const std::string & in){
     std::string out(in.size() >> 1, 0);
 	for(unsigned int x = 0; x < in.size(); x += 2){
         if (('0' <= in[x]) && (in[x] <= '9')){
-            out[x >> 1] = (uint8_t) ((in[x] - '0') << 4);
+            out[x >> 1] = static_cast <uint8_t> ((in[x] - '0') << 4);
         }
         else if(('a' <= in[x]) && (in[x] <= 'f')){
-            out[x >> 1] = (uint8_t) ((in[x] - 'a' + 10) << 4);
+            out[x >> 1] = static_cast <uint8_t> ((in[x] - 'a' + 10) << 4);
         }
         else if(('A' <= in[x]) && (in[x] <= 'F')){
-            out[x >> 1] = (uint8_t) ((in[x] - 'A' + 10) << 4);
+            out[x >> 1] = static_cast <uint8_t> ((in[x] - 'A' + 10) << 4);
         }
         else{
             throw std::runtime_error("Error: Invalid character found: " + std::string(1, in[x]));
         }
         if (('0' <= in[x + 1]) && (in[x + 1] <= '9')){
-            out[x >> 1] |= (uint8_t) (in[x + 1] - '0');
+            out[x >> 1] |= static_cast <uint8_t> (in[x + 1] - '0');
         }
         else if(('a' <= in[x + 1]) && (in[x + 1] <= 'f')){
-            out[x >> 1] |= (uint8_t) (in[x + 1] - 'a' + 10);
+            out[x >> 1] |= static_cast <uint8_t> (in[x + 1] - 'a' + 10);
         }
         else if(('A' <= in[x + 1]) && (in[x + 1] <= 'F')){
-            out[x >> 1] |= (uint8_t) (in[x + 1] - 'A' + 10);
+            out[x >> 1] |= static_cast <uint8_t> (in[x + 1] - 'A' + 10);
         }
         else{
             throw std::runtime_error("Error: Invalid character found: " + std::string(1, in[x + 1]));
@@ -105,25 +105,42 @@ std::string unhexlify(const std::string & in){
 std::string pkcs5(const std::string & data, const unsigned int & blocksize){
     // Adds PKCS5 Padding
 	int pad = ((blocksize - data.size()) % blocksize) % blocksize;
-	std::string padding(pad, (char) pad);
+    std::string padding(pad, static_cast <char> (pad));
 	return data + padding;
 }
 
 std::string remove_padding(std::string data){
 	// Removes PKCS Padding
-	uint8_t pad = (uint8_t) data[data.size() - 1];
-	std::string padding(pad, (char) pad);
+    uint8_t pad = static_cast <uint8_t> (data[data.size() - 1]);
+    std::string padding(pad, static_cast <char> (pad));
 	if ((pad < data.size()) && (padding == data.substr(data.size() - pad, pad)))
 		data = data.substr(0, data.size() - pad);
 	return data;
 }
 
-std::string zfill(std::string str, const unsigned int & n, const std::string & fill){
-    // adds (default "0") octets to the front of the string so it doesnt change the value if the string is meant to be changed to an int
-	while (str.size() < n){
-		str = fill + str;
+// adds characters to the front of the string
+std::string zfill(const std::string & str, const unsigned int & n, const char fill){
+    if ((n - str.size()) > 0){
+        return std::string(n - str.size(), fill) + str;
     }
-	return str;
+    return str;
+}
+
+// adds characters to the back of the string
+std::string pad(const std::string & str, const unsigned int & n, const char fill){
+    if ((n - str.size()) > 0){
+        return str + std::string(n - str.size(), fill);
+    }
+    return str;
+}
+
+// xor the contents of 2 strings, up to the last character of the shorter string
+std::string xor_strings(const std::string & str1, const std::string & str2){
+    std::string out = "";
+    for(unsigned int x = 0; x < std::min(str1.size(), str2.size()); x++){
+        out += std::string(1, str1[x] ^ str2[x]);
+    }
+    return out;
 }
 
 nullbuf null_obj;

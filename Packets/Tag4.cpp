@@ -1,15 +1,30 @@
 #include "Tag4.h"
-Tag4::Tag4(){
-    tag = 4;
-    version = 3;
+
+Tag4::Tag4():
+    Packet(4, 3),
+    type(), hash(), pka(),
+    keyid(),
+    nested(1)
+{}
+
+Tag4::Tag4(const Tag4 & copy):
+    Tag4()
+{
+    version = copy.version;
+    type = copy.type;
+    hash = copy.hash;
+    pka = copy.pka;
+    keyid = copy.keyid;
+    nested = copy.nested;
 }
 
-Tag4::Tag4(std::string & data){
-    tag = 4;
+Tag4::Tag4(std::string & data):
+    Tag4()
+{
     read(data);
 }
 
-void Tag4::read(std::string & data){
+void Tag4::read(std::string & data, const uint8_t part){
     size = data.size();
     version = data[0];                  // 3
     type = data[1];
@@ -20,42 +35,40 @@ void Tag4::read(std::string & data){
     data = data.substr(12, data.size() - 12);
 }
 
-// need to indent for nested
-std::string Tag4::show(){
+std::string Tag4::show(const uint8_t indents, const uint8_t indent_size) const{
+    unsigned int tab = indents * indent_size;
     std::stringstream out;
-    out << "Version: " << (unsigned int) version << "\n"
-        << "Signature Type: " << Signature_Types.at(type) << " (sig " << (unsigned int) type << ")\n"
-        << "Hash Algorithm: " << Hash_Algorithms.at(hash) << " (hash " << (unsigned int) hash << ")\n"
-        << "Public Key Algorithm: " << Public_Key_Algorithms.at(pka) << " (pka " << (unsigned int) pka << ")\n"
-        << "KeyID: " << keyid << "\n"
-        << "Nested: " << (bool) nested << "\n";
+    out << std::string(tab, ' ') << show_title() << "\n"
+        << std::string(tab, ' ') << "    Version: " << static_cast <unsigned int> (version) << "\n"
+        << std::string(tab, ' ') << "    Signature Type: " << Signature_Types.at(type) << " (sig " << static_cast <unsigned int> (type) << ")\n"
+        << std::string(tab, ' ') << "    Hash Algorithm: " << Hash_Algorithms.at(hash) << " (hash " << static_cast <unsigned int> (hash) << ")\n"
+        << std::string(tab, ' ') << "    Public Key Algorithm: " << Public_Key_Algorithms.at(pka) << " (pka " << static_cast <unsigned int> (pka) << ")\n"
+        << std::string(tab, ' ') << "    KeyID: " << hexlify(keyid) << "\n"
+        << std::string(tab, ' ') << "    Nested: " << static_cast <bool> (nested);
     return out.str();
 }
 
-std::string Tag4::raw(){
-    std::cerr << "Warning: Function not completed" << std::endl;;
-    std::string out = "\x03" + std::string(1, type) + std::string(1, hash) + std::string(1, pka) + keyid + std::string(1, nested);
-    // need to add nested packet
-    return out;
+std::string Tag4::raw() const{
+    return "\x03" + std::string(1, type) + std::string(1, hash) + std::string(1, pka) + keyid + std::string(1, nested);
 }
 
-uint8_t Tag4::get_type(){
+uint8_t Tag4::get_type() const{
     return type;
 }
 
-uint8_t Tag4::get_hash(){
+uint8_t Tag4::get_hash() const{
     return hash;
 }
 
-uint8_t Tag4::get_pka(){
+uint8_t Tag4::get_pka() const{
     return pka;
 }
 
-std::string Tag4::get_keyid(){
+std::string Tag4::get_keyid() const{
     return keyid;
 }
 
-uint8_t Tag4::get_nested(){
+uint8_t Tag4::get_nested() const{
     return nested;
 }
 
@@ -87,6 +100,6 @@ void Tag4::set_nested(const uint8_t n){
     size = raw().size();
 }
 
-Tag4 * Tag4::clone(){
-    return new Tag4(*this);
+Packet::Ptr Tag4::clone() const{
+    return std::make_shared <Tag4> (*this);
 }

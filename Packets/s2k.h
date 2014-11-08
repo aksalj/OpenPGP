@@ -27,6 +27,7 @@ THE SOFTWARE.
 #define __S2K__
 
 #include <iostream>
+#include <memory>
 #include <sstream>
 
 #include "../common/includes.h"
@@ -36,77 +37,96 @@ THE SOFTWARE.
 #define EXPBIAS 6
 uint32_t coded_count(unsigned int c);
 
+// Base Class
 class S2K{
     protected:
-        uint8_t type;
-        uint8_t hash;
-        std::string show_octect0();
-        std::string show_octect1();
+        uint8_t type; // octet 0
+        uint8_t hash; // octet 1
+
+        std::string show_title() const;
+        
+        S2K(uint8_t type);
 
     public:
-        virtual ~S2K();
-        virtual void read(std::string & data) = 0;
-        virtual std::string show() = 0;
-        virtual std::string raw() = 0;
-        std::string write();
-        virtual std::string run(std::string pass, unsigned int sym_len) = 0;
+        typedef std::shared_ptr <S2K> Ptr;
 
-        uint8_t get_type();
-        uint8_t get_hash();
+        virtual ~S2K();
+        virtual void read(std::string & data, const uint8_t part = 0) = 0;
+        virtual std::string show(const uint8_t indents = 0, const uint8_t indent_size = 4) const = 0;
+        virtual std::string raw() const = 0;
+        std::string write() const;
+        virtual std::string run(const std::string & pass, unsigned int sym_key_len) const = 0;
+
+        uint8_t get_type() const;
+        uint8_t get_hash() const;
 
         void set_type(const uint8_t t);
         void set_hash(const uint8_t h);
 
-        virtual S2K * clone() = 0;
+        virtual Ptr clone() const = 0;
 };
 
+// Simple S2K
 class S2K0: public S2K{
+    protected:
+        S2K0(uint8_t type);
+
     public:
+        typedef std::shared_ptr <S2K0> Ptr;
+
         S2K0();
         virtual ~S2K0();
-        virtual void read(std::string & data);
-        virtual std::string show();
-        virtual std::string raw();
-        virtual std::string run(std::string pass, unsigned int sym_len);
+        virtual void read(std::string & data, const uint8_t part = 0);
+        virtual std::string show(const uint8_t indents = 0, const uint8_t indent_size = 4) const;
+        virtual std::string raw() const;
+        virtual std::string run(const std::string & pass, unsigned int sym_key_len) const;
 
-        S2K0 * clone();
+        S2K::Ptr clone() const;
 };
 
+// Salted S2K
 class S2K1 : public S2K0{
     protected:
         std::string salt;   // 8 octets
 
+        S2K1(uint8_t type);
+
     public:
+        typedef std::shared_ptr <S2K1> Ptr;
+
         S2K1();
         virtual ~S2K1();
-        virtual void read(std::string & data);
-        virtual std::string show();
-        virtual std::string raw();
-        virtual std::string run(std::string pass, unsigned int sym_len);
+        virtual void read(std::string & data, const uint8_t part = 0);
+        virtual std::string show(const uint8_t indents = 0, const uint8_t indent_size = 4) const;
+        virtual std::string raw() const;
+        virtual std::string run(const std::string & pass, unsigned int sym_key_len) const;
 
-        std::string get_salt();
+        std::string get_salt() const;
 
         void set_salt(const std::string & s);
 
-        S2K1 * clone();
+        S2K::Ptr clone() const;
 };
 
+// Iterated and Salted S2K
 class S2K3 : public S2K1{
     private:
         uint8_t count;
 
     public:
+        typedef std::shared_ptr <S2K3> Ptr;
+
         S2K3();
         ~S2K3();
-        void read(std::string & data);
-        std::string show();
-        std::string raw();
-        std::string run(std::string pass, unsigned int sym_len);
+        void read(std::string & data, const uint8_t part = 0);
+        std::string show(const uint8_t indents = 0, const uint8_t indent_size = 4) const;
+        std::string raw() const;
+        std::string run(const std::string & pass, unsigned int sym_key_len) const;
 
-        uint8_t get_count();
+        uint8_t get_count() const;
 
         void set_count(const uint8_t c);
 
-        S2K3 * clone();
+        S2K::Ptr clone() const;
 };
 #endif

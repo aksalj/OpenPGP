@@ -1,61 +1,65 @@
 #include "Tag17.h"
-Tag17::Tag17(){
-    tag = 17;
-}
 
-Tag17::Tag17(std::string & data){
-    tag = 17;
+Tag17::Tag17():
+    ID(17),
+    length(),
+    type(),
+    attributes()
+{}
+
+Tag17::Tag17(std::string & data):
+    Tag17()
+{
     read(data);
 }
 
 Tag17::~Tag17(){
-    for(Subpacket *& s : attributes){
-        delete s;
-    }
+    attributes.clear();
 }
 
-void Tag17::read(std::string & data){
+void Tag17::read(std::string & data, const uint8_t part){
     size = data.size();
     while (data.size()){
-        Subpacket * temp;
+        Tag17Subpacket::Ptr temp;
         std::string subpacket = read_subpacket(data);
         uint8_t type = subpacket[0];
+        subpacket = subpacket.substr(1, subpacket.size() - 1);
         switch (type){
             case 1:
-                temp = new Tag17Sub1;
+                temp = std::make_shared<Tag17Sub1>();
                 break;
             default:
                 throw std::runtime_error("Error: Subpacket tag not defined or reserved.");
                 break;
         }
-        subpacket = subpacket.substr(1, subpacket.size() - 1);
         temp -> read(subpacket);
         attributes.push_back(temp);
     }
 }
 
-std::string Tag17::show(){
-    std::string out = "";
-    for(unsigned int i = 0; i < attributes.size(); i++){
-        out += attributes[i] -> show();
+std::string Tag17::show(const uint8_t indents, const uint8_t indent_size) const{
+    unsigned int tab = indents * indent_size;
+    std::string out = std::string(tab, ' ') + show_title();
+    for(Subpacket::Ptr const & a : attributes){
+        out += "\n" + a -> show(indents, indent_size);
     }
     return out;
 }
 
-std::string Tag17::raw(){
+std::string Tag17::raw() const{
     std::string out = "";
-    for(Subpacket * a : attributes){
+    for(Subpacket::Ptr const & a : attributes){
         out += a -> write();
     }
     return out;
 }
 
 // Extracts Subpacket data for figuring which subpacket type to create
-// Some data is destroyed in the process
+// Some data is consumed in the process
 std::string Tag17::read_subpacket(std::string & data){
     size = data.size();
     uint32_t length = 0;
-    uint8_t first_octet = (unsigned char) data[0];
+    uint8_t first_octet = data[0];
     if (first_octet < 192){
         length = first_octet;
         data = data.substr(1, data.size() - 1);
@@ -73,7 +77,7 @@ std::string Tag17::read_subpacket(std::string & data){
     return out;
 }
 
-std::string Tag17::write_subpacket(uint8_t s_type, std::string data){
+std::string Tag17::write_subpacket(uint8_t s_type, std::string data) const{
     if (data.size() < 192){
         return std::string(1, data.size()) + std::string(1, s_type) + data;
     }
@@ -86,30 +90,26 @@ std::string Tag17::write_subpacket(uint8_t s_type, std::string data){
     return ""; // should never reach here; mainly just to remove compiler warnings
 }
 
-std::vector <Subpacket *> Tag17::get_attributes(){
+std::vector <Tag17Subpacket::Ptr> Tag17::get_attributes() const{
     return attributes;
 }
 
-std::vector <Subpacket *> Tag17::get_attributes_clone(){
-    std::vector <Subpacket *> out;
-    for(Subpacket *& s : attributes){
-        Subpacket * temp = s -> clone();
-        out.push_back(temp);
+std::vector <Tag17Subpacket::Ptr> Tag17::get_attributes_clone() const{
+    std::vector <Tag17Subpacket::Ptr> out;
+    for(Tag17Subpacket::Ptr const & s : attributes){
+        out.push_back(s -> clone());
     }
     return out;
 }
 
-void Tag17::set_attibutes(const std::vector <Subpacket *> & a){
-    for(Subpacket *& s : attributes){
-        delete s;
-    }
+void Tag17::set_attributes(const std::vector <Tag17Subpacket::Ptr> & a){
     attributes.clear();
-    for(Subpacket * const & s : a){
-        attributes.push_back(s);
+    for(Tag17Subpacket::Ptr const & s : a){
+        attributes.push_back(s -> clone());
     }
     size = raw().size();
 }
 
-Tag17 * Tag17::clone(){
-    return new Tag17(*this);
+Packet::Ptr Tag17::clone() const{
+    return std::make_shared <Tag17> (*this);
 }

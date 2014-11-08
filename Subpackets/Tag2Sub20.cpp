@@ -1,10 +1,15 @@
 #include "Tag2Sub20.h"
-Tag2Sub20::Tag2Sub20(){
-    type = 20;
-}
 
-Tag2Sub20::Tag2Sub20(std::string & data){
-    type = 20;
+Tag2Sub20::Tag2Sub20():
+    Tag2Subpacket(20),
+    flags(),
+    mlen(), nlen(),
+    m(), n()
+{}
+
+Tag2Sub20::Tag2Sub20(std::string & data):
+    Tag2Sub20()
+{
     read(data);
 }
 
@@ -19,29 +24,31 @@ void Tag2Sub20::read(std::string & data){
     size = mlen + nlen + 4;
 }
 
-std::string Tag2Sub20::show(){
+std::string Tag2Sub20::show(const uint8_t indents, const uint8_t indent_size) const{
+    unsigned int tab = indents * indent_size;
     std::stringstream out;
-    for(unsigned int x = 0; x < 4; x++){
-        out << "            Flag - " << Notation.at(flags[x]) << " (not " << (unsigned int) flags[x] << ")\n";
+    out << std::string(tab, ' ') << show_title();
+    for(char const & c : flags){
+        out << "\n" << std::string(tab, ' ') << "            Flag - " << Notation.at(c) << " (not " << static_cast <unsigned int> (c) << ")";
     }
     out << "\n"
-        << "            Name: " << m << "\n"
-        << "            Value: " << n << "\n";
+        << std::string(tab, ' ') << "            Name: " << m << "\n"
+        << std::string(tab, ' ') << "            Value: " << n;
     return out.str();
 }
-std::string Tag2Sub20::raw(){
+std::string Tag2Sub20::raw() const{
     return flags + unhexlify(makehex(m.size(), 4)) + unhexlify(makehex(n.size(), 4)) + m + n;
 }
 
-std::string Tag2Sub20::get_flags(){
+std::string Tag2Sub20::get_flags() const{
     return flags;
 }
 
-std::string Tag2Sub20::get_m(){
+std::string Tag2Sub20::get_m() const{
     return m;
 }
 
-std::string Tag2Sub20::get_n(){
+std::string Tag2Sub20::get_n() const{
     return n;
 }
 
@@ -62,6 +69,6 @@ void Tag2Sub20::set_n(const std::string & s){
     n = s;
 }
 
-Tag2Sub20 * Tag2Sub20::clone(){
-    return new Tag2Sub20(*this);
+Tag2Subpacket::Ptr Tag2Sub20::clone() const{
+    return std::make_shared <Tag2Sub20> (*this);
 }

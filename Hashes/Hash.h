@@ -27,20 +27,24 @@ THE SOFTWARE.
 #define __HASH__
 
 #include <iostream>
+#include <memory>
 
 #include "../common/includes.h"
 
 class Hash{
-    protected:
-        unsigned int bytes = 0;
-        std::string buffer = "";
-
     public:
+        typedef std::shared_ptr<Hash> Ptr;
+
         Hash();
-        virtual void update(const std::string & data = "") = 0;
+        virtual ~Hash();
+        virtual void update(const std::string & str) = 0;
         virtual std::string hexdigest() = 0;
         std::string digest();
-        virtual unsigned int blocksize() = 0;
-        virtual unsigned int digestsize() = 0;
+        virtual unsigned int blocksize() const = 0;  // blocksize in bits
+        virtual unsigned int digestsize() const = 0; // digest size in bits
+
+    protected:
+        std::string stack;
+        uint64_t clen;
 };
 #endif

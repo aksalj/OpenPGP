@@ -1,10 +1,13 @@
 #include "Tag2Sub11.h"
-Tag2Sub11::Tag2Sub11(){
-    type = 11;
-}
 
-Tag2Sub11::Tag2Sub11(std::string & data){
-    type = 11;
+Tag2Sub11::Tag2Sub11():
+    Tag2Subpacket(11),
+    psa()
+{}
+
+Tag2Sub11::Tag2Sub11(std::string & data):
+    Tag2Sub11()
+{
     read(data);
 }
 
@@ -13,19 +16,21 @@ void Tag2Sub11::read(std::string & data){
     size = data.size();
 }
 
-std::string Tag2Sub11::show(){
+std::string Tag2Sub11::show(const uint8_t indents, const uint8_t indent_size) const{
+    unsigned int tab = indents * indent_size;
     std::stringstream out;
-    for(unsigned int x = 0; x < psa.size(); x++){
-        out << "            sym alg - " << Symmetric_Algorithms.at(psa[x]) << " (sym " << (unsigned int) psa[x] << ")\n";
+    out << std::string(tab, ' ') << show_title();
+    for(char const & c : psa){
+        out << "\n" << std::string(tab, ' ') << "            sym alg - " << Symmetric_Algorithms.at(c) << " (sym " << static_cast <unsigned int> (c) << ")";
     }
     return out.str();
 }
 
-std::string Tag2Sub11::raw(){
+std::string Tag2Sub11::raw() const{
     return psa;
 }
 
-std::string Tag2Sub11::get_psa(){
+std::string Tag2Sub11::get_psa() const{
     return psa;
 }
 
@@ -33,6 +38,6 @@ void Tag2Sub11::set_psa(const std::string & s){
     psa = s;
 }
 
-Tag2Sub11 * Tag2Sub11::clone(){
-    return new Tag2Sub11(*this);
+Tag2Subpacket::Ptr Tag2Sub11::clone() const{
+    return std::make_shared <Tag2Sub11> (*this);
 }
