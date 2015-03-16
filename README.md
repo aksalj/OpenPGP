@@ -1,6 +1,6 @@
 # OpenPGP in C++
 
-Copyright (c) 2013, 2014 Jason Lee @ calccrypto at gmail.com
+Copyright (c) 2013, 2014, 2015 Jason Lee @ calccrypto at gmail.com
 
 Please see LICENSE file for license.
 
@@ -23,7 +23,7 @@ Please see LICENSE file for license.
 
 **Rather, it was meant for learning about the**
 **internals of PGP can easily use/add a few**
-**std::couts to see the internal workings.**
+**`std::cout`s to see the internal workings.**
 
 **So if you choose to use it in a real setting**
 **where secrecy is required, do so at your own**
@@ -36,7 +36,7 @@ the OpenPGP Message Format.
 
 The following are the libraries necessary to build OpenPGP:
 
-- GMP (<https://gmplib.org/>, `sudo apt-get install libdev-gmp`, etc)
+- GMP (<https://gmplib.org/>, `sudo apt-get install libgmp-dev`, etc)
 - bzip2 (<http://www.bzip.org/>, `sudo apt-get install libbz2-dev`, etc)
 - zlib (<http://www.zlib.net/>, `sudo apt-get install zlib1g-dev`, etc)
 
@@ -64,7 +64,7 @@ Simply `#include` whatever functions needed:
  sign           | sign.h
  verify         | verify.h
 
-Multiple classes inherit from the abstact base class PGP in order
+Multiple classes inherit from the abstract base class PGP in order
 to make differentiating PGP block types better in code:
 
  PGP block type          | Description
@@ -95,7 +95,7 @@ All data structures have some standard functions:
     raw   | returns a string that can be read by the read function.
     write | returns a string of the entire data, including extra data, such as header and size.
     clone | returns a pointer to a deep copy of the object (mainly used for moving PGP data around).
-    Ptr   | a typedef for std::shared_ptr&lt;T&gt; for the class where the typdef is found.
+    Ptr   | a typedef for std::shared_ptr&lt;T&gt; for the class where the typedef is found.
 
 `operator =` and the copy constructor have been overloaded
 for the data structures that need deep copy.
@@ -112,5 +112,6 @@ Keyrings were not implemented. Rather, keys are read
 from the directory used as arguments to functions.
 
 If for some reason the program cannot operate on some data
-properly, an exception will be thrown. This will be changed
-sometime, so that not all errors will cause crashes.
+properly, an exception will be thrown.
+
+Tab completion might not work on cygwin

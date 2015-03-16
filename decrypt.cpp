@@ -44,6 +44,7 @@ std::vector <PGPMPI> decrypt_secret_key(const Tag5::Ptr & pri, const std::string
 
     // decrypt secret key
     std::string secret_key = use_normal_CFB_decrypt(pri -> get_sym(), pri -> get_secret(), key, pri -> get_IV());
+
     // get checksum and remove it from the string
     const unsigned int hash_size = (pri -> get_s2k_con() == 254)?20:2;
     std::string checksum = secret_key.substr(secret_key.size() - hash_size, hash_size);
@@ -147,48 +148,7 @@ PGPMessage decrypt_data(const uint8_t sym, const PGPMessage & m, const std::stri
     }
     data = data.substr(BS + 2, data.size() - BS - 2);               // get rid of prefix
 
-    // decompress data if necessary
-    if (packet == 9){ // Symmetrically Encrypted Data Packet (Tag 9)
-        // figure out which compression algorithm was used
-        // uncompressed literal data packet
-        if ((data[0] == 'b') || (data[0] == 't') || (data[0] == 'u')){
-            data = Tag11(data).write(0);                            // add in Tag11 headers to be removed later
-        }
-        // BZIP2
-        else if (data.substr(0, 2) == "BZ"){
-            data = PGP_decompress(3, data);
-        }
-        // ZLIB
-        else if ((data.substr(0, 2) == "\x78\x01") || (data.substr(0, 2) == "\x78\x9c") || (data.substr(0, 2) == "\x78\xda")){
-            data = PGP_decompress(2, data);
-        }
-        // DEFLATE
-        else{
-            data = PGP_decompress(1, data);
-        }
-    }
-    else if (packet == 18){
-        // expect a compressed or literal data packet
-        bool format;
-        uint8_t partial = 0;
-
-        data = read_packet_header(data, packet, format, partial);
-
-        if (packet == 8){
-            Tag8 tag8(data);
-            data = tag8.get_data();
-        }
-        else if (packet == 11){
-            Tag11 tag11(data);
-            data = tag11.write(0);                                  // add in Tag11 headers to be removed later
-        }
-        else{
-            std::stringstream s; s << Packet_Tags.at(packet) << " (Tag " << static_cast <unsigned int> (packet) << ").";
-            throw std::runtime_error("Error: Got unexpected data: " + s.str());
-        }
-    }
-
-    // parse decrypted data
+    // decompress and parse decrypted data
     return PGPMessage(data);
 }
 
@@ -226,7 +186,7 @@ std::string decrypt_pka(const PGPSecretKey & pri, const PGPMessage & m, const st
         throw std::runtime_error("Error: Expected Public-Key Encrypted Session Key Packet (Tag 1). Instead got " + s.str());
     }
 
-   // Public-Key Encrypted Session Key Packet (Tag 1)
+    // Public-Key Encrypted Session Key Packet (Tag 1)
     Tag1 tag1(data);
     uint8_t pka = tag1.get_pka();
     std::vector <PGPMPI> session_key_mpi = tag1.get_mpi();
@@ -273,6 +233,7 @@ std::string decrypt_pka(const PGPSecretKey & pri, const PGPMessage & m, const st
             out += tag11.out(writefile);
         }
     }
+
     return out;
 }
 

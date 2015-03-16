@@ -32,18 +32,7 @@ THE SOFTWARE.
 #include <stdexcept>
 #include <vector>
 
-#include "../PGP.h"                     // abstract base class
-#include "../PGPCleartextSignature.h"   // Cleartext Signatures
-#include "../PGPDetachedSignature.h"    // Detached Signatures
-#include "../PGPKey.h"                  // Transferable Keys
-#include "../PGPMessage.h"              // OpenPGP Messages
-
-#include "../decrypt.h"                 // decrypt stuff
-#include "../encrypt.h"                 // encrypt stuff
-#include "../generatekey.h"             // generate OpenPGP keys
-#include "../revoke.h"                  // revoke OpenPGP keys
-#include "../sign.h"                    // sign stuff
-#include "../verify.h"                  // verify signatures
+#include "../OpenPGP.h"
 
 typedef std::map <std::string, std::string> Options;                        // simple type for storing function options + values
 
@@ -55,9 +44,9 @@ const std::vector <std::string> commands = {
     // 2
     "test",                                                                 // test some functions
     // 3
-    "list key_file",                                                        // list keys in file, like 'gpg --list-keys'
+    "list key-file",                                                        // list keys in file, like 'gpg --list-keys'
     // 4
-    "show -p|-c filename [options]\n"                                       // display contents of a key file; -k for general PGP data, -c for cleartext signed data
+    "show -p|-c filename [options]\n"                                       // display contents of a key file; -p for general PGP data, -c for cleartext signed data
     "        options:\n"
     "            -o output file\n",                                         // where to output data
     // 5
@@ -73,83 +62,83 @@ const std::vector <std::string> commands = {
     "            -c comment\n"                                              // string; default ""
     "            -e email",                                                 // string; default ""
     // 6
-    "generate-revoke-cert private_key passphrase [options]\n"               // generate a revocation certificate for later
+    "generate-revoke-cert private-key passphrase [options]\n"               // generate a revocation certificate for later
     "        options:\n"
     "            -o output file\n"                                          // where to output data
     "            -a armored\n"                                              // d (default: "pre-existing internal value"), t, or f; default d; whether or not to armor output
     "            -c code\n"                                                 // 0, 1, 2, or 3
     "            -r reason",                                                // some string
     // 7
-    "encrypt-pka public_key data_file [options]\n"                          // encrypt with a public key
+    "encrypt-pka public-key data-file [options]\n"                          // encrypt with a public key
     "        options:\n"
     "            -o output file\n"                                          // where to output data
     "            -a armored\n"                                              // d (default: "pre-existing internal value"), t, or f; default d; whether or not to armor output
     "            -c compression algorithm\n"                                // Uncompressed, ZIP (DEFLATE), ZLIB, BZIP2; default ZLIB; see consts.h or RFC 4880 sec 9.3 for details
     "            -d delete original?\n"                                     // t or f; default f
-    "            -mdc use_mdc?\n"                                           // t or f; default t
+    "            -mdc use-mdc?\n"                                           // t or f; default t
     "            -p passphrase for signing key\n"                           // used with "-sign"
     "            -sign private key file\n"                                  // private key filename; option "-p" must also be used
     "            -sym symmetric encryption algorithm",                      // default AES256; see consts.h or RFC 4880 sec 9.2 for details
     // 8
-    "decrypt-pka private_key passphrase data_file [options]\n"              // decrypt with a private key
+    "decrypt-pka private-key passphrase data-file [options]\n"              // decrypt with a private key
     "        options:\n"
     "            -a armored\n"                                              // d (default: "pre-existing internal value"), t, or f; default d; whether or not to armor output
     "            -d delete original?\n"                                     // t or f; default f
     "            -v signing public key\n"                                   // public key file of signer
     "            -w write to file?",                                        // t or f; default t
     // 9
-    "revoke target revocation_certificate [options]\n"                      // revoke a key with a revocation certificate
+    "revoke target revocation-certificate [options]\n"                      // revoke a key with a revocation certificate
     "            -o output file\n"                                          // where to output data
     "            -a armored",                                               // d (default: "pre-existing internal value"), t, or f; default d; whether or not to armor output
     // 10
-    "revoke-key private_key passphrase [options]\n"                         // revoke a primary key
+    "revoke-key private-key passphrase [options]\n"                         // revoke a primary key
     "        options:\n"
     "            -o output file\n"                                          // where to output data
     "            -a armored\n"                                              // d (default: "pre-existing internal value"), t, or f; default d; whether or not to armor output
     "            -c code\n"                                                 // 0, 1, 2, or 3
     "            -r reason",                                                // some string
     // 11
-    "revoke-subkey private_key passphrase [options]\n"                      // revoke a subkey
+    "revoke-subkey private-key passphrase [options]\n"                      // revoke a subkey
     "        options:\n"
     "            -o output file\n"                                          // where to output data
     "            -a armored\n"                                              // d (default: "pre-existing internal value"), t, or f; default d; whether or not to armor output
     "            -c code\n"                                                 // 0, 1, 2, or 3
     "            -r reason",                                                // some string
     // 12
-    "sign-cleartext private_key passphrase data_file [options]\n"           // sign a string in a file
+    "sign-cleartext private-key passphrase data-file [options]\n"           // sign a string in a file
     "        options:\n"
     "            -o output file\n"                                          // where to output data
     "            -a armored\n"                                              // d (default: "pre-existing internal value"), t, or f; default d; whether or not to armor output
     "            -h hash algorithm",                                        // default SHA1; see consts.h or RFC 4880 sec for values
     // 13
-    "sign-detach private_key passphrase data_file [options]\n"              // sign a file
+    "sign-detach private-key passphrase data-file [options]\n"              // sign a file
     "        options:\n"
     "            -o output file\n"                                          // where to output data
     "            -a armored\n"                                              // d (default: "pre-existing internal value"), t, or f; default d; whether or not to armor output
     "            -h hash algorithm",                                        // default SHA1; see consts.h or RFC 4880 sec for values
     // 14
-    "sign-file private_key passphrase data_file [options]\n"                // sign a file
+    "sign-file private-key passphrase data-file [options]\n"                // sign a file
     "        options:\n"
     "            -o output file\n"                                          // where to output data
     "            -a armored\n"                                              // d (default: "pre-existing internal value"), t, or f; default d; whether or not to armor output
     "            -c compression algorithm\n"                                // Uncompressed, ZIP (DEFLATE), ZLIB, BZIP2; default ZLIB; see consts.h or RFC 4880 sec 9.3 for details
     "            -h hash algorithm",                                        // default SHA1; see consts.h or RFC 4880 sec for values
     // 15
-    "sign-key signer passphrase data_file\n"                                // sign a key
+    "sign-key signer passphrase data-file\n"                                // sign a key
     "        options:\n"
     "            -o output file\n"                                          // where to output data
     "            -a armored\n"                                              // d (default: "pre-existing internal value"), t, or f; default d; whether or not to armor output
     "            -c certification level",                                   // 0x10 - 0x13; default 0x13 (without "0x")
     // 16
-    "verify-clearsign public_key data_file",                                // verify cleartext signature
+    "verify-clearsign public-key data-file",                                // verify cleartext signature
     // 17
-    "verify-detach public_key data_file signature_file",                    // verify detached signature
+    "verify-detach public-key data-file signature-file",                    // verify detached signature
     // 18
-    "verify-message public_key signature_file",                             // verify detached signature
+    "verify-message public-key signature-file",                             // verify detached signature
     // 19
-    "verify-revoke public_key revocation_certificate",                      // verify a revocation certificate is valid; used after generating the certificate
+    "verify-revoke public-key revocation-certificate",                      // verify a revocation certificate is valid; used after generating the certificate
     // 20
-    "verify-key signer_key_file signee_key_file",                           // verify signature
+    "verify-key signer-key-file signee-key-file",                           // verify signature
 };
 
 // simple stringstream to option + value
@@ -178,6 +167,7 @@ std::string upper(const std::string & in){
     return out;
 }
 
+// find all commands that match given input
 std::string find_command(const std::string & input){
     std::stringstream out;
     unsigned int len = input.size();
@@ -215,12 +205,18 @@ void output(const std::string & data, const std::string & filename = ""){
 }
 
 // function to parse commands
-bool parse_command(std::string & input){
+// args: whether or not input was passed from terminal
+bool parse_command(std::string & input, bool args = false){
     try{
         std::stringstream tokens(input);
         std::string cmd; tokens >> cmd;
 
-        if (cmd == ""){
+        // remove "--" from front of input, if they came from console
+        if (args && (cmd.substr(0, 2) == "--")){
+            cmd = cmd.substr(2, cmd.size() - 2);
+        }
+
+        if (!args && (cmd == "")){
             return true;
         }
         else if ((cmd == "exit") || (cmd == "quit")){
@@ -416,13 +412,23 @@ bool parse_command(std::string & input){
             options["-mdc"] = lower(options["-mdc"]);
             options["-sym"] = upper(options["-sym"]);
 
+            // check input
             std::ifstream d(data_file.c_str(), std::ios::binary);
             if (!d){
                 throw std::runtime_error("Error: File '" + data_file + "' not opened.");
             }
+
             std::ifstream k(pub_file.c_str(), std::ios::binary);
             if (!k){
                 throw std::runtime_error("Error: File '" + pub_file + "' not opened.");
+            }
+
+            if (Compression_Numbers.find(options["-c"]) == Compression_Numbers.end()){
+                throw std::runtime_error("Error: Bad Compression Algorithm Number");
+            }
+
+            if (Symmetric_Algorithms_Numbers.find(options["-sym"]) == Symmetric_Algorithms_Numbers.end()){
+                throw std::runtime_error("Error: Bad Symmetric Key Algorithm Number");
             }
 
             PGPSecretKey::Ptr signer = nullptr;
@@ -610,6 +616,10 @@ bool parse_command(std::string & input){
             options["-a"] = lower(options["-a"]);
             options["-h"] = upper(options["-h"]);
 
+            if (Hash_Numbers.find(options["-h"]) == Hash_Numbers.end()){
+                throw std::runtime_error("Error: Bad Hash Algorithm Number");
+            }
+
             PGPSecretKey key(k);
 
             output(sign_cleartext(key, passphrase, text).write((options["-a"] == "f")?1:(options["-a"] == "t")?2:0), options["-o"]);
@@ -636,6 +646,10 @@ bool parse_command(std::string & input){
             parse_options(tokens, options);
             options["-a"] = lower(options["-a"]);
             options["-h"] = upper(options["-h"]);
+
+            if (Hash_Numbers.find(options["-h"]) == Hash_Numbers.end()){
+                throw std::runtime_error("Error: Bad Hash Algorithm Number");
+            }
 
             PGPSecretKey key(k);
 
@@ -665,6 +679,14 @@ bool parse_command(std::string & input){
             options["-a"] = lower(options["-a"]);
             options["-c"] = upper(options["-c"]);
             options["-h"] = upper(options["-h"]);
+
+            if (Compression_Numbers.find(options["-c"]) == Compression_Numbers.end()){
+                throw std::runtime_error("Error: Bad Compression Algorithm Number");
+            }
+
+            if (Hash_Numbers.find(options["-h"]) == Hash_Numbers.end()){
+                throw std::runtime_error("Error: Bad Hash Algorithm Number");
+            }
 
             PGPSecretKey key(k);
 
@@ -802,7 +824,13 @@ bool parse_command(std::string & input){
             std::cout << "Key in '" << signee_file << "' was" << std::string(verify_key(signerkey, signeekey)?"":" not") << " signed by key " << signerkey << "." << std::endl;
         }
         else{
-            std::cout << find_command(cmd) << std::endl;;
+            if (args){
+                std::stringstream out; out << "Error: Search string \"" + input + "\" does not match any commands.";
+                throw std::runtime_error(out.str());
+            }
+            else {
+                std::cout << find_command(cmd) << std::endl;
+            }
         }
     }
     catch (const std::exception & e){
@@ -817,7 +845,7 @@ int main(int argc, char * argv[]){
     if (argc == 1){
         std::cout << "An OpenPGP implementation (RFC 4880)\nby Jason Lee @ calccrypto@gmail.com\n\n"
                   << "Type help or ? for command syntax\n\n" << std::endl;
-        while (parse_command(input)){
+        while (parse_command(input, false)){
             std::cout << "> ";
             getline(std::cin, input);
         }
@@ -827,7 +855,7 @@ int main(int argc, char * argv[]){
         for(int x = 1; x < argc; x++){
             input += std::string(argv[x]) + " ";
         }
-        parse_command(input);
+        parse_command(input, true);
     }
     return 0;
 }

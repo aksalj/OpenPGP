@@ -85,34 +85,21 @@ std::string OpenPGP_CFB_encrypt(SymAlg::Ptr & crypt, const uint8_t packet, const
     // 5. FR is encrypted to produce FRE, the encryption of the first BS octets of ciphertext.
     FRE = crypt -> encrypt(FR);
 
-    // 6. The left two octets of FRE get xored with the next two octets of data that were prefixed to the plaintext. This produces C[BS+1] and C[BS+2], the next two octets of ciphertext.
-    C += xor_strings(FRE.substr(0, 2), prefix.substr(BS - 2, 2));
 
-	if (packet == 9){ // resynchronization
+	if (packet == 9){           // resynchronization
+        // 6. The left two octets of FRE get xored with the next two octets of data that were prefixed to the plaintext. This produces C[BS+1] and C[BS+2], the next two octets of ciphertext.
+        C += xor_strings(FRE.substr(0, 2), prefix.substr(BS - 2, 2));
+
 		// 7. (The resynchronization step) FR is loaded with C[3] through C[BS+2].
         FR = C.substr(2, BS);
 
 		// 8. FR is encrypted to produce FRE.
         FRE = crypt -> encrypt(FR);
 
-		// 9. FRE is xored with the first BS octets of the given plaintext, now that we have finished encrypting the BS+2 octets of prefixed data. This produces C[BS+3] through C[BS+(BS+2)], the next BS octets of ciphertext.
+        // 9. FRE is xored with the first BS octets of the given plaintext, now that we have finished encrypting the BS+2 octets of prefixed data. This produces C[BS+3] through C[BS+(BS+2)], the next BS octets of ciphertext.
         C += xor_strings(FRE, data.substr(0, BS));
-
-        unsigned int x = BS;
-        while (x < data.size()){
-            // 10. FR is loaded with C[BS+3] to C[BS + (BS+2)] (which is C11-C18 for an 8-octet block).
-            FR = C.substr(x + 2, BS);
-
-			// 11. FR is encrypted to produce FRE.
-            FRE = crypt -> encrypt(FR);
-
-			// 12. FRE is xored with the next BS octets of plaintext, to produce the next BS octets of ciphertext. These are loaded into FR, and the process is repeated until the plaintext is used up.
-            C += xor_strings(FRE, data.substr(x, BS));
-
-            x += BS;
-        }
     }
-    else{ // no resynchronization
+    else if (packet == 18){     // no resynchronization
 		/*
 		5.13. Sym. Encrypted Integrity Protected Data Packet (Tag 18)
 
@@ -121,27 +108,27 @@ std::string OpenPGP_CFB_encrypt(SymAlg::Ptr & crypt, const uint8_t packet, const
 			data.
 		*/
 
-        // 8
-        // FRE = crypt -> encrypt(FR); // not needed
-
-        // 9
-        C += xor_strings(FRE.substr(2, BS - 2), data.substr(0, BS));
-        C = C.substr(0, BS << 1);
-
-        unsigned int x = BS;
-        while (x < data.size()){
-            // 10
-            FR = C.substr(x, BS);
-
-            // 11
-            FRE = crypt -> encrypt(FR);
-
-            // 12
-            C += xor_strings(FRE, data.substr(x - 2, BS));
-
-            x += BS;
-        }
+        // Second block of ciphertext is the 2 repeated octets + the first BS - 2 octets of the plaintext
+        C += xor_strings(FRE, prefix.substr(BS - 2, 2) + data.substr(0, BS - 2));
     }
+    else{
+        throw std::runtime_error("Error: Bad Packet Type");
+    }
+
+    unsigned int x = BS - ((packet == 9)?0:2);
+    while (x < data.size()){
+        // 10. FR is loaded with C[BS+3] to C[BS + (BS+2)] (which is C11-C18 for an 8-octet block).
+        FR = C.substr(x + 2, BS);
+
+        // 11. FR is encrypted to produce FRE.
+        FRE = crypt -> encrypt(FR);
+
+        // 12. FRE is xored with the next BS octets of plaintext, to produce the next BS octets of ciphertext. These are loaded into FR, and the process is repeated until the plaintext is used up.
+        C += xor_strings(FRE, data.substr(x, BS));
+
+        x += BS;
+    }
+
     return C;
 }
 
@@ -163,8 +150,9 @@ std::string OpenPGP_CFB_decrypt(SymAlg::Ptr & crypt, const uint8_t packet, const
     if (prefix.substr(BS - 2, 2) != check){
         throw std::runtime_error("Error: Bad OpenPGP_CFB check value.");
     }
+
     std::string P = "";
-    unsigned int x = (packet == 9)?2:0; // 7
+    unsigned int x = (packet == 9)?2:0;
     while ((x + BS) < data.size()){
         std::string substr = data.substr(x, BS);
         P += xor_strings(FRE, substr);
@@ -172,7 +160,9 @@ std::string OpenPGP_CFB_decrypt(SymAlg::Ptr & crypt, const uint8_t packet, const
         x += BS;
     }
     P += xor_strings(FRE, data.substr(x, BS));
-    return prefix + prefix.substr(BS - 2, 2) + P.substr(BS + 2, P.size() - BS - 2);
+    P = P.substr(BS, P.size() - BS);
+
+    return prefix + ((packet == 9)?prefix.substr(BS - 2, 2):std::string("")) + P;   // only add prefix 2 octets when resyncing - already shows up without resync
 }
 
 std::string use_OpenPGP_CFB_encrypt(const uint8_t sym_alg, const uint8_t packet, const std::string & data, const std::string & key, const std::string & prefix){
@@ -180,8 +170,7 @@ std::string use_OpenPGP_CFB_encrypt(const uint8_t sym_alg, const uint8_t packet,
         return data;
     }
     SymAlg::Ptr alg = use_sym_alg(sym_alg, key);
-    std::string out = OpenPGP_CFB_encrypt(alg, packet, data, prefix);
-    return out;
+    return OpenPGP_CFB_encrypt(alg, packet, data, prefix);
 }
 
 std::string use_OpenPGP_CFB_decrypt(const uint8_t sym_alg, const uint8_t packet, const std::string & data, const std::string & key){
@@ -189,11 +178,10 @@ std::string use_OpenPGP_CFB_decrypt(const uint8_t sym_alg, const uint8_t packet,
         return data;
     }
     SymAlg::Ptr alg = use_sym_alg(sym_alg, key);
-    std::string out = OpenPGP_CFB_decrypt(alg, packet, data);
-    return out;
+    return OpenPGP_CFB_decrypt(alg, packet, data);
 }
 
-std::string normal_CFB_encrypt(SymAlg::Ptr & crypt, std::string & data, std::string & IV){
+std::string normal_CFB_encrypt(SymAlg::Ptr & crypt, const std::string & data, std::string IV){
     std::string out = "";
     const unsigned int BS = crypt -> blocksize() >> 3;
     unsigned int x = 0;
@@ -205,7 +193,7 @@ std::string normal_CFB_encrypt(SymAlg::Ptr & crypt, std::string & data, std::str
     return out;
 }
 
-std::string normal_CFB_decrypt(SymAlg::Ptr & crypt, std::string & data, std::string & IV){
+std::string normal_CFB_decrypt(SymAlg::Ptr & crypt, const std::string & data, std::string IV){
     std::string out = "";
     const unsigned int BS = crypt -> blocksize() >> 3;
     unsigned int x = 0;
@@ -217,20 +205,18 @@ std::string normal_CFB_decrypt(SymAlg::Ptr & crypt, std::string & data, std::str
     return out;
 }
 
-std::string use_normal_CFB_encrypt(const uint8_t sym_alg, std::string data, std::string key, std::string IV){
+std::string use_normal_CFB_encrypt(const uint8_t sym_alg, const std::string & data, const std::string & key, const std::string & IV){
     if (!sym_alg){
         return data;
     }
     SymAlg::Ptr alg = use_sym_alg(sym_alg, key);
-    std::string out = normal_CFB_encrypt(alg, data, IV);
-    return out;
+    return normal_CFB_encrypt(alg, data, IV);
 }
 
-std::string use_normal_CFB_decrypt(const uint8_t sym_alg, std::string data, std::string key, std::string IV){
+std::string use_normal_CFB_decrypt(const uint8_t sym_alg, const std::string & data, const std::string & key, const std::string & IV){
     if (!sym_alg){
         return data;
     }
     SymAlg::Ptr alg = use_sym_alg(sym_alg, key);
-    std::string out = normal_CFB_decrypt(alg, data, IV);
-    return out;
+    return normal_CFB_decrypt(alg, data, IV);
 }
